@@ -1,0 +1,54 @@
+---
+title: "p8105_hw5_YOURUNI"
+author: "Wenjie Wu"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+```
+
+# Problem 1
+
+```{r}
+duplicate_birthday = function(n) {
+
+  birthdays <- sample(1:365, n, replace = TRUE)  
+  return(length(birthdays) != length(unique(birthdays)))
+  
+}
+```
+
+```{r}
+max_group_size = 50  
+num_simulations = 10000  
+
+probabilities = numeric(max_group_size - 1)
+group_sizes = 2:max_group_size
+
+for (n in group_sizes) {
+  duplicates = 0  
+  
+  for (i in 1:num_simulations) {
+    
+    birthdays = sample(1:365, n, replace = TRUE)
+    
+    if (length(birthdays) != length(unique(birthdays))) {
+      duplicates = duplicates + 1
+    }
+  }
+  
+  probabilities[n - 1] = duplicates / num_simulations
+}
+```
+
+```{r}
+plot(group_sizes, probabilities, type = "o",
+     xlab = "Group Size", ylab = "Probability of Shared Birthday",
+     main = "Probability of at Least Two People Sharing a Birthday by Group Size",
+     col = "blue", pch = 16)
+```
+
+
+
+
+- As the group size increases, the probability of shared birthdays rises quickly.  By a group size of around 50, the probability of shared birthdays approaches almost 100%.
