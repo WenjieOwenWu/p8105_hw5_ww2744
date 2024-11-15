@@ -1,10 +1,13 @@
 ---
-title: "p8105_hw5_YOURUNI"
+title: "p8105_hw5_ww2744"
 author: "Wenjie Wu"
 output: github_document
 ---
 
 ```{r setup, include=FALSE}
+library(dplyr)
+library(broom)
+library(tidyverse)
 ```
 
 # Problem 1
@@ -12,7 +15,7 @@ output: github_document
 ```{r}
 duplicate_birthday = function(n) {
 
-  birthdays <- sample(1:365, n, replace = TRUE)  
+  birthdays = sample(1:365, n, replace = TRUE)  
   return(length(birthdays) != length(unique(birthdays)))
   
 }
@@ -52,3 +55,145 @@ plot(group_sizes, probabilities, type = "o",
 
 
 - As the group size increases, the probability of shared birthdays rises quickly.  By a group size of around 50, the probability of shared birthdays approaches almost 100%.
+
+# Problem 2
+
+```{r}
+n = 30
+sigma = 5
+mu_values = c(0, 1, 2, 3, 4, 5, 6)
+alpha = 0.05
+n_sim = 5000
+
+simulate_power = function(mu) {
+  results = replicate(n_sim, {
+    x = rnorm(n, mean = mu, sd = sigma)
+    t_test = t.test(x, mu = 0)
+    tidy_result = broom::tidy(t_test)
+    c(mean_hat = tidy_result[[1]], p_value = tidy_result[[3]])
+  })
+  
+  results = t(results)
+  colnames(results) = c("mean_hat", "p_value")
+  as_tibble(results) |>
+    mutate(mu = mu)
+}
+
+sim_results = map_dfr(mu_values, simulate_power)
+
+summary_results = sim_results |>
+  group_by(mu) |>
+  summarise(
+    power = mean(p_value < alpha),
+    avg_mean_hat = mean(mean_hat),
+    avg_mean_hat_rejected = mean(mean_hat[p_value < alpha])
+  )
+
+power_plot = summary_results |>
+  ggplot(aes(x = mu, y = power)) +
+  geom_line() +
+  geom_point() +
+  labs(title = "Power vs True Mean (mu)", x = "True Mean (mu)", y = "Power")
+
+mean_plot = summary_results |>
+  pivot_longer(cols = starts_with("avg_mean"), names_to = "type", values_to = "mean_value") |>
+  mutate(type = case_when(
+    type == "avg_mean_hat" ~ "All Samples",
+    type == "avg_mean_hat_rejected" ~ "Rejected Nulls Only"
+  )) |>
+  ggplot(aes(x = mu, y = mean_value, color = type)) +
+  geom_line() +
+  geom_point() +
+  labs(title = "Average Mean Estimates vs True Mean (mu)", x = "True Mean (mu)", y = "Average Estimate")
+
+print(power_plot)
+print(mean_plot)
+```
+
+- `Power` increases with `Effect size` but flattens when it approaches 100%.
+
+- The sample average of `𝜇̂` across tests for which the null is rejected approximate the true value of `𝜇`, especially when `𝜇` is larger than 4.
+When  `𝜇`  is small, random noise in the data plays a larger role in determining whether the null hypothesis is rejected. As  `𝜇`  increases, the true signal dominates over random noise
+ 
+ # Problem 3
+ 
+```{r}
+homi_df = read_csv("data/homicide-data.csv", na = c("NA", "","."))
+```
+ 
+- The raw data contains the information of the `Location` where homicide occurred, the `Arrest Status`, `Demographic Information` about victims。
+
+```{r}
+homi_df = 
+  homi_df |>
+  mutate(city_state = paste(city, state, sep = ", "))
+
+homi_df |>
+  group_by(city_state) |>
+  summarize(
+    total_homicides = n(),
+    unsolved_homicides = sum(disposition %in% c("Closed without arrest", "Open/No arrest"))
+  )
+
+```
+
+```{r}
+baltimore_data = homi_df |>
+  filter(city_state == "Baltimore, MD")
+
+total_num = nrow(baltimore_data)
+unsolved_num =  with(baltimore_data, sum(disposition %in% c("Closed without arrest", "Open/No arrest")))
+
+prop_test_result = prop.test(x = unsolved_num, n = total_num)
+
+tidy_result = 
+  prop_test_result |>
+  broom::tidy() 
+
+estimated_proportion = 
+  tidy_result |>
+  select(estimate)
+
+conf_int = with(tidy_result, c(conf.low, conf.high))
+  
+```
+
+- `Estimated proportion` is `r estimated_proportion`, `Confidence Interval` is `r conf_int`.
+
+```{r}
+city_sum = homi_df |>
+  mutate(city_state = paste(city, state, sep = ", ")) |>
+  group_by(city_state) |>
+  summarize(
+    total_homicides = n(),
+    unsolved_homicides = sum(disposition %in% c("Closed without arrest", "Open/No arrest")),
+    .groups = "drop"
+  ) |>
+    mutate(
+    prop_test_result = purrr::map2(unsolved_homicides, total_homicides, ~ broom::tidy(prop.test(.x, .y)))
+  ) |>
+  unnest(prop_test_result) |>
+  select(city_state, estimate, conf.low, conf.high) 
+
+city_sum |>
+  knitr::kable(alpha = .3)
+```
+
+```{r}
+city_sum |>
+  arrange(estimate) |>
+  mutate(city_state = factor(city_state, levels = city_state)) |>
+  ggplot( aes(x = city_state, y = estimate)) +
+    geom_point(size = 1) +  
+    geom_errorbar(aes(ymin = conf.low, ymax = conf.high), width = 0.2) +  
+    labs(
+      title = "Proportion of Unsolved Homicides",
+      x = "City",
+      y = "Estimated Proportion"
+    ) +
+    theme_minimal() +
+    coord_flip() +
+  theme(axis.text.y = element_text(size = 5))
+```
+
+
